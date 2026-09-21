@@ -9,16 +9,28 @@ from typing import Optional, Tuple
 from .core import ActionResult, Arrow, GameSession, GameStatus
 
 
-WINDOW_BG = "#0d1426"
-CARD_BG = "#172440"
-GRID_BG = "#111c34"
-GRID_LINE = "#30476e"
-TEXT = "#f4f7ff"
-MUTED = "#a8b5d1"
-ACCENT = "#70a7ff"
-SUCCESS = "#54d69b"
-DANGER = "#ff6b78"
-ARROW_COLORS = {"^": "#ff6b7a", "v": "#55d99c", "<": "#ffb454", ">": "#70a7ff"}
+WINDOW_BG = "#eaf1f7"
+CARD_BG = "#ffffff"
+GRID_BG = "#f7fbff"
+GRID_LINE = "#c7d7e8"
+TEXT = "#2b3a55"
+MUTED = "#72819a"
+ACCENT = "#6d94d6"
+SUCCESS = "#4aa88a"
+DANGER = "#d66c78"
+
+# 颜色不再与方向绑定：方向由箭头形状表达，颜色只用于区分相邻箭头。
+# 使用低饱和度调色板，按箭头位置和关卡编号轮换，避免同方向箭头全部同色。
+ARROW_PALETTE = (
+    "#d8898f",  # 柔和珊瑚
+    "#77aaa4",  # 灰青绿
+    "#d7ad67",  # 暖金
+    "#789bd0",  # 雾蓝
+    "#a889c4",  # 淡紫
+    "#d59672",  # 杏橙
+    "#6fa7b9",  # 湖蓝
+    "#c883a5",  # 莓粉
+)
 ARROW_NAMES = {"^": "上", "v": "下", "<": "左", ">": "右"}
 
 
@@ -85,8 +97,8 @@ class ArrowGameApp(tk.Tk):
 
         legend = tk.Frame(card, bg=CARD_BG)
         legend.pack(pady=28)
-        for symbol in ("^", "v", "<", ">"):
-            tk.Label(legend, text=f"{symbol}  {ARROW_NAMES[symbol]}", font=("Segoe UI Symbol", 16, "bold"), fg=ARROW_COLORS[symbol], bg=CARD_BG, padx=10).pack(side="left")
+        for index, symbol in enumerate(("^", "v", "<", ">")):
+            tk.Label(legend, text=f"{symbol}  {ARROW_NAMES[symbol]}", font=("Segoe UI Symbol", 16, "bold"), fg=ARROW_PALETTE[index], bg=CARD_BG, padx=10).pack(side="left")
 
         self._button(card, "开始游戏", lambda: self._start_game(0), primary=True).pack(pady=(4, 10), fill="x")
         tk.Label(card, text=f"共 {len(self.session.levels)} 个关卡 · 每关默认 3 次失误机会", font=("Microsoft YaHei UI", 10), fg=MUTED, bg=CARD_BG).pack()
@@ -175,7 +187,7 @@ class ArrowGameApp(tk.Tk):
         if self.canvas is None or self._layout is None:
             return
         _, _, cell = self._layout
-        color = ARROW_COLORS[arrow.direction]
+        color = self._arrow_color(arrow)
         vectors = {"^": (0, -1), "v": (0, 1), "<": (-1, 0), ">": (1, 0)}
         dx, dy = vectors[arrow.direction]
         tail = cell * 0.25
@@ -193,6 +205,16 @@ class ArrowGameApp(tk.Tk):
             cy - dy * tip * 0.45 - py * tip * 0.65,
         )
         self.canvas.create_polygon(*points, fill=color, outline=color)
+
+    def _arrow_color(self, arrow: Arrow) -> str:
+        """按位置稳定分配颜色，让同方向箭头也能拥有不同颜色。"""
+
+        palette_index = (
+            arrow.row * 7
+            + arrow.col * 11
+            + self.session.level_index * 3
+        ) % len(ARROW_PALETTE)
+        return ARROW_PALETTE[palette_index]
 
     def _on_canvas_click(self, event: tk.Event) -> None:
         if self._animating or self._layout is None:
