@@ -5,6 +5,12 @@ from homework2.levels import LEVELS, Level
 
 
 class BoardRuleTests(unittest.TestCase):
+    def test_invalid_level_layout_is_rejected(self):
+        with self.assertRaises(ValueError):
+            Level("不规则", (">..", ".."))
+        with self.assertRaises(ValueError):
+            Level("非法字符", ("x",))
+
     def test_all_fixed_levels_are_solvable(self):
         self.assertGreaterEqual(len(LEVELS), 3)
         for level in LEVELS:
@@ -49,6 +55,13 @@ class GameSessionTests(unittest.TestCase):
         self.assertEqual(self.session.board.remaining, 2)
         self.assertEqual(self.session.status, GameStatus.PLAYING)
 
+    def test_clicking_empty_cell_does_not_change_state(self):
+        result = self.session.click(1, 1)
+        self.assertEqual(result.kind, "invalid")
+        self.assertEqual(self.session.board.remaining, 3)
+        self.assertEqual(self.session.mistakes_left, 3)
+        self.assertEqual(self.session.status, GameStatus.PLAYING)
+
     def test_blocked_arrow_consumes_one_mistake_and_stays(self):
         result = self.session.click(0, 0)
         self.assertEqual(result.kind, "blocked")
@@ -80,6 +93,13 @@ class GameSessionTests(unittest.TestCase):
         self.assertFalse(self.session.next_level() is False)
         self.assertEqual(self.session.level_index, 1)
         self.assertEqual(self.session.status, GameStatus.PLAYING)
+
+    def test_finishing_last_level_sets_all_cleared(self):
+        self.session.start(1)
+        self.session.click(0, 0)
+        self.assertEqual(self.session.status, GameStatus.WON)
+        self.assertFalse(self.session.next_level())
+        self.assertEqual(self.session.status, GameStatus.ALL_CLEARED)
 
 
 if __name__ == "__main__":
