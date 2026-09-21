@@ -81,7 +81,7 @@ class ArrowGameApp(tk.Tk):
             "前方没有箭头即可消除；撞到阻挡会消耗一次失误机会。\n"
             "清空棋盘即可通关，失误次数耗尽则需要重试。"
         )
-        tk.Label(card, text=rules, justify="left", font=("Microsoft YaHei UI", 12), fg=TEXT, bg=CARD_BG, spacing3=8).pack()
+        tk.Label(card, text=rules, justify="left", font=("Microsoft YaHei UI", 12), fg=TEXT, bg=CARD_BG).pack()
 
         legend = tk.Frame(card, bg=CARD_BG)
         legend.pack(pady=28)
