@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk
+from math import sin
 from typing import Optional, Tuple
 
 from .core import ActionResult, Arrow, GameSession, GameStatus
@@ -47,7 +47,10 @@ class ArrowGameApp(tk.Tk):
         self._view: Optional[tk.Frame] = None
         self.canvas: Optional[tk.Canvas] = None
         self._layout: Optional[Tuple[float, float, float]] = None
-        self._flash_position: Optional[Tuple[int, int]] = None
+        self._shake_position: Optional[Tuple[int, int]] = None
+        self._error_position: Optional[Tuple[int, int]] = None
+        self._shake_step = 0
+        self._heart_burst_frame = ""
         self._animating = False
         self._message_var = tk.StringVar(value="")
         self._level_var = tk.StringVar()
@@ -58,6 +61,13 @@ class ArrowGameApp(tk.Tk):
     def _clear_view(self) -> tk.Frame:
         if self._view is not None:
             self._view.destroy()
+        # 让已经排队的动画回调在切换页面后安全退出。
+        self.canvas = None
+        self._layout = None
+        self._animating = False
+        self._shake_position = None
+        self._error_position = None
+        self._heart_burst_frame = ""
         self._view = tk.Frame(self, bg=WINDOW_BG)
         self._view.pack(fill="both", expand=True)
         return self._view
@@ -71,7 +81,7 @@ class ArrowGameApp(tk.Tk):
             fg=WINDOW_BG if primary else TEXT,
             bg=ACCENT if primary else CARD_BG,
             activeforeground=WINDOW_BG if primary else TEXT,
-            activebackground="#95bdff" if primary else "#24365c",
+            activebackground="#88a8df" if primary else "#edf3f9",
             relief="flat",
             bd=0,
             padx=22,
@@ -82,26 +92,52 @@ class ArrowGameApp(tk.Tk):
     def show_start(self) -> None:
         view = self._clear_view()
         view.columnconfigure(0, weight=1)
-        view.rowconfigure(0, weight=1)
-        card = tk.Frame(view, bg=CARD_BG, padx=46, pady=38)
-        card.grid(row=0, column=0, padx=32, pady=32)
+        view.rowconfigure(1, weight=1)
 
-        tk.Label(card, text="一箭又一箭", font=("Microsoft YaHei UI", 32, "bold"), fg=TEXT, bg=CARD_BG).pack()
-        tk.Label(card, text="观察方向，找出每支箭头的出路", font=("Microsoft YaHei UI", 14), fg=MUTED, bg=CARD_BG).pack(pady=(8, 26))
-        rules = (
-            "点击箭头后，它会沿指向方向飞向棋盘边界。\n"
-            "前方没有箭头即可消除；撞到阻挡会消耗一次失误机会。\n"
-            "清空棋盘即可通关，失误次数耗尽则需要重试。"
-        )
-        tk.Label(card, text=rules, justify="left", font=("Microsoft YaHei UI", 12), fg=TEXT, bg=CARD_BG).pack()
+        hero = tk.Canvas(view, height=214, bg="#dceaf7", highlightthickness=0)
+        hero.grid(row=0, column=0, sticky="ew")
+        self._draw_home_hero(hero)
 
+        content = tk.Frame(view, bg=WINDOW_BG, padx=28, pady=20)
+        content.grid(row=1, column=0, sticky="nsew")
+        content.columnconfigure(0, weight=1)
+        card = tk.Frame(content, bg=CARD_BG, padx=34, pady=24, highlightbackground="#d3e1ee", highlightthickness=1)
+        card.grid(row=0, column=0, sticky="ew")
+
+        badge = tk.Label(card, text="轻量解谜 · 四向箭头", font=("Microsoft YaHei UI", 10, "bold"), fg=ACCENT, bg="#edf4fc", padx=12, pady=5)
+        badge.pack(anchor="w")
+        tk.Label(card, text="找出每支箭头的出路", font=("Microsoft YaHei UI", 18, "bold"), fg=TEXT, bg=CARD_BG).pack(anchor="w", pady=(13, 5))
+        tk.Label(card, text="观察前方是否有阻挡，按正确顺序清空棋盘。", font=("Microsoft YaHei UI", 11), fg=MUTED, bg=CARD_BG).pack(anchor="w")
+
+        info_row = tk.Frame(card, bg=CARD_BG)
+        info_row.pack(fill="x", pady=(20, 18))
+        self._home_chip(info_row, "4", "个固定关卡").pack(side="left", expand=True, fill="x", padx=(0, 8))
+        self._home_chip(info_row, "4", "个箭头方向").pack(side="left", expand=True, fill="x", padx=4)
+        self._home_chip(info_row, "3", "次容错机会").pack(side="left", expand=True, fill="x", padx=(8, 0))
+
+        self._button(card, "▶  开始挑战", lambda: self._start_game(0), primary=True).pack(fill="x", pady=(2, 12))
         legend = tk.Frame(card, bg=CARD_BG)
-        legend.pack(pady=28)
+        legend.pack()
         for index, symbol in enumerate(("^", "v", "<", ">")):
-            tk.Label(legend, text=f"{symbol}  {ARROW_NAMES[symbol]}", font=("Segoe UI Symbol", 16, "bold"), fg=ARROW_PALETTE[index], bg=CARD_BG, padx=10).pack(side="left")
+            tk.Label(legend, text=f"{symbol} {ARROW_NAMES[symbol]}", font=("Segoe UI Symbol", 11, "bold"), fg=ARROW_PALETTE[index], bg=CARD_BG, padx=10).pack(side="left")
 
-        self._button(card, "开始游戏", lambda: self._start_game(0), primary=True).pack(pady=(4, 10), fill="x")
-        tk.Label(card, text=f"共 {len(self.session.levels)} 个关卡 · 每关默认 3 次失误机会", font=("Microsoft YaHei UI", 10), fg=MUTED, bg=CARD_BG).pack()
+    def _draw_home_hero(self, canvas: tk.Canvas) -> None:
+        """绘制首页的游戏化视觉头图，避免首页像普通说明文档。"""
+
+        width = max(canvas.winfo_width(), 820)
+        canvas.create_oval(width - 210, -58, width + 55, 206, fill="#c9def3", outline="")
+        canvas.create_oval(width - 150, 14, width + 18, 182, fill="#d3e6f6", outline="")
+        canvas.create_text(36, 38, text="ARROW PUZZLE", anchor="w", fill="#6686ae", font=("Segoe UI", 10, "bold"))
+        canvas.create_text(34, 91, text="一箭又一箭", anchor="w", fill=TEXT, font=("Microsoft YaHei UI", 33, "bold"))
+        canvas.create_text(38, 143, text="每一次点击，都是一次出路判断", anchor="w", fill="#68809e", font=("Microsoft YaHei UI", 13))
+        for x, y, symbol, color in ((width - 165, 68, "↑", ARROW_PALETTE[3]), (width - 92, 115, "→", ARROW_PALETTE[1]), (width - 205, 137, "←", ARROW_PALETTE[0]), (width - 92, 47, "↓", ARROW_PALETTE[2])):
+            canvas.create_text(x, y, text=symbol, fill=color, font=("Segoe UI Symbol", 31, "bold"))
+
+    def _home_chip(self, parent: tk.Widget, value: str, label: str) -> tk.Frame:
+        chip = tk.Frame(parent, bg="#f2f7fc", padx=10, pady=8, highlightbackground="#e0eaf3", highlightthickness=1)
+        tk.Label(chip, text=value, font=("Microsoft YaHei UI", 17, "bold"), fg=ACCENT, bg="#f2f7fc").pack()
+        tk.Label(chip, text=label, font=("Microsoft YaHei UI", 9), fg=MUTED, bg="#f2f7fc").pack()
+        return chip
 
     def _start_game(self, level_index: int) -> None:
         self.session.start(level_index)
@@ -118,8 +154,9 @@ class ArrowGameApp(tk.Tk):
         tk.Label(header, textvariable=self._level_var, font=("Microsoft YaHei UI", 17, "bold"), fg=TEXT, bg=WINDOW_BG).grid(row=0, column=0, sticky="w")
         stats = tk.Frame(header, bg=WINDOW_BG)
         stats.grid(row=0, column=1, sticky="e")
-        tk.Label(stats, textvariable=self._remaining_var, font=("Microsoft YaHei UI", 11), fg=MUTED, bg=WINDOW_BG).pack(side="left", padx=12)
-        tk.Label(stats, textvariable=self._mistakes_var, font=("Microsoft YaHei UI", 11, "bold"), fg=DANGER, bg=WINDOW_BG).pack(side="left", padx=12)
+        tk.Label(stats, textvariable=self._remaining_var, font=("Microsoft YaHei UI", 12, "bold"), fg=MUTED, bg=WINDOW_BG, padx=12, pady=6).pack(side="left", padx=6)
+        self._mistakes_label = tk.Label(stats, textvariable=self._mistakes_var, font=("Segoe UI Symbol", 15, "bold"), fg=DANGER, bg="#fff1f2", padx=14, pady=6)
+        self._mistakes_label.pack(side="left", padx=6)
 
         board_card = tk.Frame(view, bg=CARD_BG, padx=16, pady=16)
         board_card.grid(row=1, column=0, padx=24, pady=(0, 12), sticky="nsew")
@@ -152,7 +189,9 @@ class ArrowGameApp(tk.Tk):
     def _update_stats(self) -> None:
         self._level_var.set(self.session.current_level.name)
         self._remaining_var.set(f"剩余箭头：{self.session.board.remaining}")
-        self._mistakes_var.set(f"失误机会：{'❤' * self.session.mistakes_left}")
+        hearts = " ".join("❤" for _ in range(self.session.mistakes_left)) or "—"
+        burst = f"  {self._heart_burst_frame}" if self._heart_burst_frame else ""
+        self._mistakes_var.set(f"生命  {hearts}{burst}")
 
     def _draw_board(self) -> None:
         if self.canvas is None:
@@ -170,12 +209,15 @@ class ArrowGameApp(tk.Tk):
                 x1, y1 = origin_x + col * cell, origin_y + row * cell
                 self.canvas.create_rectangle(x1 + 2, y1 + 2, x1 + cell - 2, y1 + cell - 2, fill=GRID_BG, outline=GRID_LINE, width=1)
         for arrow in self.session.board.arrows:
-            self._draw_arrow_at(arrow, *self._center_for(arrow.row, arrow.col))
-        if self._flash_position is not None:
-            row, col = self._flash_position
-            cx, cy = self._center_for(row, col)
-            radius = cell * 0.37
-            self.canvas.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, outline=DANGER, width=4)
+            cx, cy = self._center_for(arrow.row, arrow.col)
+            if arrow.position == self._shake_position:
+                shake = sin(self._shake_step * 1.9) * cell * 0.12
+                if arrow.direction in "<>":
+                    cx += shake
+                else:
+                    cy += shake
+            error_color = DANGER if arrow.position == self._error_position else None
+            self._draw_arrow_at(arrow, cx, cy, error_color)
 
     def _center_for(self, row: int, col: int) -> Tuple[float, float]:
         if self._layout is None:
@@ -183,11 +225,11 @@ class ArrowGameApp(tk.Tk):
         origin_x, origin_y, cell = self._layout
         return origin_x + (col + 0.5) * cell, origin_y + (row + 0.5) * cell
 
-    def _draw_arrow_at(self, arrow: Arrow, cx: float, cy: float) -> None:
+    def _draw_arrow_at(self, arrow: Arrow, cx: float, cy: float, color_override: Optional[str] = None) -> None:
         if self.canvas is None or self._layout is None:
             return
         _, _, cell = self._layout
-        color = self._arrow_color(arrow)
+        color = color_override or self._arrow_color(arrow)
         vectors = {"^": (0, -1), "v": (0, 1), "<": (-1, 0), ">": (1, 0)}
         dx, dy = vectors[arrow.direction]
         tail = cell * 0.25
@@ -229,35 +271,63 @@ class ArrowGameApp(tk.Tk):
             return
         self._update_stats()
         if result.kind == "blocked":
-            self._flash_position = result.arrow.position
+            self._animating = True
+            self._shake_position = result.arrow.position
+            self._error_position = result.blocker.position if result.blocker else None
+            self._shake_step = 0
             blocker_text = f"（挡路箭头在第 {result.blocker.row + 1} 行第 {result.blocker.col + 1} 列）" if result.blocker else ""
-            self._message_var.set(f"碰撞！失误机会 -1 {blocker_text}")
-            self._draw_board()
-            self.after(460, self._finish_blocked_feedback)
-            if result.status is GameStatus.FAILED:
-                self.after(650, self.show_result)
+            self._message_var.set(f"无法飞出，箭头发生震动 {blocker_text}")
+            self._animate_heart_burst(0)
+            self._animate_blocked(result.status, 0)
             return
         self._animating = True
         self._message_var.set("箭头飞出中……")
         self._animate_fly(result.arrow, 0)
 
-    def _finish_blocked_feedback(self) -> None:
-        self._flash_position = None
-        if self.session.status is GameStatus.PLAYING:
+    def _animate_heart_burst(self, frame: int) -> None:
+        """用短促的破碎符号反馈一次失误，明显但不过度。"""
+
+        frames = ("❤", "✦✦", "·", "")
+        if frame >= len(frames):
+            self._heart_burst_frame = ""
+            self._update_stats()
+            return
+        self._heart_burst_frame = frames[frame]
+        self._update_stats()
+        self.after(72, lambda: self._animate_heart_burst(frame + 1))
+
+    def _animate_blocked(self, result_status: GameStatus, step: int) -> None:
+        """让被点击箭头震动，同时让真正的阻挡箭头短暂变红。"""
+
+        total_steps = 10
+        if self.canvas is None:
+            return
+        self._shake_step = step
+        self._draw_board()
+        if step < total_steps:
+            self.after(36, lambda: self._animate_blocked(result_status, step + 1))
+            return
+        self._shake_position = None
+        self._error_position = None
+        self._animating = False
+        if result_status is GameStatus.FAILED:
+            self.after(280, self.show_result)
+        else:
             self._message_var.set("请选择一支前方畅通的箭头")
             self._draw_board()
 
     def _animate_fly(self, arrow: Arrow, step: int) -> None:
         if self.canvas is None:
             return
-        total_steps = 12
+        total_steps = 18
         self._draw_board()
         start_x, start_y = self._center_for(arrow.row, arrow.col)
         vectors = {"^": (0, -1), "v": (0, 1), "<": (-1, 0), ">": (1, 0)}
         dx, dy = vectors[arrow.direction]
         _, _, cell = self._layout or (0, 0, 40)
         progress = step / total_steps
-        distance = cell * 1.8 * progress
+        # 飞行距离覆盖整个棋盘并再多走两个格，确保箭头完整离屏。
+        distance = cell * (max(self.session.board.rows, self.session.board.cols) + 2.0) * progress
         self._draw_arrow_at(arrow, start_x + dx * distance, start_y + dy * distance)
         if step < total_steps:
             self.after(25, lambda: self._animate_fly(arrow, step + 1))
