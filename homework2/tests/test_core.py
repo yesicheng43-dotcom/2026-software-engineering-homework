@@ -1,7 +1,8 @@
+import random
 import unittest
 
 from homework2.core import Board, GameSession, GameStatus, find_solution, is_solvable
-from homework2.levels import LEVELS, Level
+from homework2.levels import LEVELS, Level, generate_random_level
 
 
 class BoardRuleTests(unittest.TestCase):
@@ -17,6 +18,31 @@ class BoardRuleTests(unittest.TestCase):
             with self.subTest(level=level.name):
                 self.assertTrue(is_solvable(level))
                 self.assertIsNotNone(find_solution(level))
+
+    def test_random_level_preserves_density_and_is_solvable(self):
+        template = LEVELS[-1]
+        generated = generate_random_level(template, random.Random(20260922))
+        template_count = sum(symbol in "^v<>" for row in template.layout for symbol in row)
+        generated_count = sum(symbol in "^v<>" for row in generated.layout for symbol in row)
+        self.assertEqual((generated.rows, generated.cols), (template.rows, template.cols))
+        self.assertEqual(generated_count, template_count)
+        self.assertTrue(is_solvable(generated))
+
+    def test_random_level_changes_between_generations(self):
+        template = LEVELS[1]
+        rng = random.Random(7)
+        first = generate_random_level(template, rng)
+        second = generate_random_level(template, rng)
+        self.assertNotEqual(first.layout, second.layout)
+
+    def test_randomized_session_regenerates_on_restart(self):
+        session = GameSession((LEVELS[0],), randomize=True, rng=random.Random(11))
+        session.start()
+        first = session.current_level.layout
+        session.restart()
+        second = session.current_level.layout
+        self.assertNotEqual(first, second)
+        self.assertTrue(is_solvable(session.current_level))
 
     def test_path_only_checks_the_forward_ray(self):
         level = Level("方向", ("<..", ".^.", "..>"))

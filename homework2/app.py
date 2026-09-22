@@ -43,7 +43,8 @@ class ArrowGameApp(tk.Tk):
         self.geometry("820x760")
         self.minsize(680, 620)
         self.configure(bg=WINDOW_BG)
-        self.session = session or GameSession()
+        # 默认每次开始/重开关卡都生成新的可解棋盘；传入 session 时仍支持外部测试和自定义关卡。
+        self.session = session or GameSession(randomize=True)
         self._view: Optional[tk.Frame] = None
         self.canvas: Optional[tk.Canvas] = None
         self._layout: Optional[Tuple[float, float, float]] = None
@@ -111,7 +112,7 @@ class ArrowGameApp(tk.Tk):
 
         info_row = tk.Frame(card, bg=CARD_BG)
         info_row.pack(fill="x", pady=(20, 18))
-        self._home_chip(info_row, "4", "个固定关卡").pack(side="left", expand=True, fill="x", padx=(0, 8))
+        self._home_chip(info_row, "4", "个随机棋盘").pack(side="left", expand=True, fill="x", padx=(0, 8))
         self._home_chip(info_row, "4", "个箭头方向").pack(side="left", expand=True, fill="x", padx=4)
         self._home_chip(info_row, "3", "次容错机会").pack(side="left", expand=True, fill="x", padx=(8, 0))
 

@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
+import random
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from .levels import ARROW_SYMBOLS, LEVELS, Level
+from .levels import ARROW_SYMBOLS, LEVELS, Level, generate_random_level
 
 Position = Tuple[int, int]
 
@@ -151,10 +152,19 @@ def is_solvable(level: Level) -> bool:
 class GameSession:
     """管理关卡流程和玩家操作。"""
 
-    def __init__(self, levels: Sequence[Level] = LEVELS) -> None:
+    def __init__(
+        self,
+        levels: Sequence[Level] = LEVELS,
+        *,
+        randomize: bool = False,
+        rng: Optional[random.Random] = None,
+    ) -> None:
         if not levels:
             raise ValueError("至少需要一个关卡")
-        self.levels = tuple(levels)
+        self._base_levels = tuple(levels)
+        self._randomize = randomize
+        self._rng = rng or random.Random()
+        self.levels = self._base_levels
         self.level_index = 0
         self.board = Board(self.levels[0])
         self.mistakes_left = self.levels[0].mistakes
@@ -171,6 +181,11 @@ class GameSession:
         self.restart()
 
     def restart(self) -> None:
+        if self._randomize:
+            generated = generate_random_level(self._base_levels[self.level_index], self._rng)
+            current_levels = list(self.levels)
+            current_levels[self.level_index] = generated
+            self.levels = tuple(current_levels)
         self.board = Board(self.current_level)
         self.mistakes_left = self.current_level.mistakes
         self.status = GameStatus.PLAYING
