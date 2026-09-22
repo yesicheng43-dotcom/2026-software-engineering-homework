@@ -319,7 +319,7 @@ class ArrowGameApp(tk.Tk):
     def _animate_fly(self, arrow: Arrow, step: int) -> None:
         if self.canvas is None:
             return
-        total_steps = 18
+        total_steps = 14
         self._draw_board()
         start_x, start_y = self._center_for(arrow.row, arrow.col)
         vectors = {"^": (0, -1), "v": (0, 1), "<": (-1, 0), ">": (1, 0)}
@@ -330,7 +330,7 @@ class ArrowGameApp(tk.Tk):
         distance = cell * (max(self.session.board.rows, self.session.board.cols) + 2.0) * progress
         self._draw_arrow_at(arrow, start_x + dx * distance, start_y + dy * distance)
         if step < total_steps:
-            self.after(25, lambda: self._animate_fly(arrow, step + 1))
+            self.after(18, lambda: self._animate_fly(arrow, step + 1))
             return
         self._animating = False
         if self.session.status is GameStatus.WON:
